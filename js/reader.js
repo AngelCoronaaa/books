@@ -578,6 +578,7 @@ const Reader = (() => {
   async function open(book, ia) {
     if (S) S.pagToken++;
     S = { book, ia, pagToken: 0, cur: 0, pages: [], ready: false, mode: null, queue: 0 };
+    leaveEmbed();
     applyPrefs();
     el.title.textContent = book.title;
     el.author.textContent = book.author || '';
@@ -683,8 +684,45 @@ const Reader = (() => {
     }, 200);
   });
 
+  /* ---------- Visor de Google Books (vista previa oficial) ---------- */
+  const embedBox = $('r-embed');
+  function leaveEmbed() {
+    el.root.classList.remove('embed-mode');
+    embedBox.hidden = true;
+    embedBox.innerHTML = '';
+  }
+
+  function openEmbed(book) {
+    if (S) S.pagToken++;
+    S = { book, ia: book.key, embed: true, pagToken: 0, pages: [], ready: false };
+    applyPrefs();
+    closePanels();
+    el.title.textContent = book.title;
+    el.author.textContent = `${book.author || ''} · ${book.full ? 'Google Books' : 'Vista previa de Google Books'}`;
+    el.root.classList.add('embed-mode');
+    el.root.hidden = false;
+    document.body.classList.add('no-scroll');
+    showLoading('Abriendo visor de Google Books…');
+    embedBox.hidden = false;
+    embedBox.innerHTML = `
+      <iframe src="${API.googleEmbedUrl(book.gbId)}" title="${esc(book.title)}" allowfullscreen></iframe>
+      <p>${book.full ? 'Libro gratuito' : 'Vista previa limitada ofrecida por Google: algunas páginas pueden estar ocultas'} · <a href="${esc(book.infoLink || '#')}" target="_blank" rel="noopener">Abrir en Google Books ↗</a></p>`;
+    embedBox.querySelector('iframe').addEventListener('load', hideLoading, { once: true });
+    setTimeout(hideLoading, 6000);
+    Store.updateReading(book.key, { book, mode: 'embed', percent: Store.getReading(book.key)?.percent || 0 });
+  }
+
   function close() {
     if (!S) return;
+    if (S.embed) {
+      S = null;
+      leaveEmbed();
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      el.root.hidden = true;
+      document.body.classList.remove('no-scroll');
+      onCloseCb && onCloseCb();
+      return;
+    }
     saveProgress();
     clearTimeout(saveTimer);
     if (S.ready) {
@@ -901,7 +939,7 @@ const Reader = (() => {
       else if (!document.fullscreenElement) close();
       return;
     }
-    if (typing) return;
+    if (typing || S.embed) return;
     switch (e.key) {
       case 'ArrowRight': case 'PageDown': case ' ': e.preventDefault(); go(1); break;
       case 'ArrowLeft': case 'PageUp': e.preventDefault(); go(-1); break;
@@ -915,6 +953,7 @@ const Reader = (() => {
 
   return {
     open,
+    openEmbed,
     close,
     onClose(cb) { onCloseCb = cb; },
     get isOpen() { return !!S; },

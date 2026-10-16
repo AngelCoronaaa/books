@@ -1,7 +1,8 @@
 # Folio · Lector de libros
 
-Aplicación web para buscar y leer libros de dominio público en **español e inglés**, usando la
-[Open Library API](https://openlibrary.org/developers/api) y los escaneos de **Internet Archive**.
+Aplicación web para buscar y leer libros en **español e inglés**, usando la
+[Open Library API](https://openlibrary.org/developers/api), los escaneos de **Internet Archive** y la
+[Google Books API](https://developers.google.com/books).
 HTML, CSS y JavaScript puro, sin dependencias ni compilación.
 
 ## Cómo ejecutarla
@@ -15,9 +16,18 @@ python3 -m http.server 8000
 
 ## Funciones
 
+**Fuentes**
+| Fuente | Qué aporta | Cómo se lee |
+| --- | --- | --- |
+| Open Library / Internet Archive (dominio público) | Clásicos completos | En el lector de Folio, con animación de hoja |
+| Open Library (préstamo) | Libros modernos con derechos (Orwell, tecnología…) | Préstamo gratuito en openlibrary.org con cuenta |
+| Google Books | Vista previa oficial de libros modernos y ebooks gratuitos | Visor de Google incrustado en Folio |
+
 **Explorar**
-- Buscador por título, autor o tema.
-- Filtros: idioma (ambos / español / inglés), solo lectura gratuita, género, autor, rango de años y orden.
+- Buscador por título, autor o tema, con resultados mezclados de todas las fuentes.
+- Filtros: idioma (ambos / español / inglés), fuente, disponibilidad (lectura completa gratis /
+  gratis, préstamo o vista previa / todo), género (incluye tecnología, programación, distopías…),
+  autor, rango de años y orden.
 - Accesos rápidos por género, scroll infinito y filtros activos como etiquetas.
 - Los filtros se guardan en la URL, así que puedes compartir una búsqueda.
 
@@ -38,20 +48,28 @@ python3 -m http.server 8000
 **Mi biblioteca**
 - "Continuar leyendo" con el progreso de cada libro y tus favoritos (guardado en `localStorage`).
 
+## Google Books API key (opcional)
+
+Sin key, Google Books usa una cuota anónima compartida que a veces se agota (la app lo avisa y sigue
+funcionando con Open Library). Para evitarlo, crea una key gratuita en
+[Google Cloud Console](https://console.cloud.google.com/apis/library/books.googleapis.com),
+restríngela por *HTTP referrer* a tu dominio y ponla en `js/config.js`.
+
 ## Estructura
 
 ```
 index.html
 css/styles.css
+js/config.js   # configuración opcional (API key de Google Books)
 js/store.js    # persistencia local (progreso, marcadores, favoritos, preferencias)
-js/api.js      # Open Library + Internet Archive
+js/api.js      # Open Library + Internet Archive + Google Books
 js/reader.js   # lector: paginación, animación de hoja, marcadores, búsqueda
 js/app.js      # buscador, filtros, resultados, ficha y biblioteca
 ```
 
 ## Notas
 
-- Solo se pueden leer las ediciones de dominio público. Las de préstamo muestran un aviso con
-  enlace a Internet Archive.
+- Los libros con derechos de autor nunca se descargan completos: se leen con el préstamo de Open Library
+  o con la vista previa oficial de Google Books, que muestra solo una parte de las páginas.
 - El modo Texto usa el OCR de Internet Archive, así que en libros antiguos puede tener errores;
   el modo Páginas muestra el escaneo original.

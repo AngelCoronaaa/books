@@ -1,4 +1,4 @@
-/* Cliente de Open Library e Internet Archive. */
+/* Clientes de Open Library, Internet Archive y Google Books. */
 const API = (() => {
   const OL = 'https://openlibrary.org';
   const IA = 'https://archive.org';
@@ -33,7 +33,8 @@ const API = (() => {
     if (f.subject) parts.push(`subject:"${f.subject}"`);
     if (f.lang === 'es' || f.lang === 'en') parts.push(`language:${LANG_CODES[f.lang]}`);
     else parts.push('(language:spa OR language:eng)');
-    if (f.readable) parts.push('ebook_access:public');
+    if (f.avail === 'full') parts.push('ebook_access:public');
+    else if (f.avail === 'preview') parts.push('ebook_access:(public OR borrowable)');
     const from = parseInt(f.yearFrom, 10), to = parseInt(f.yearTo, 10);
     if (from || to) parts.push(`first_publish_year:[${from || '*'} TO ${to || '*'}]`);
     return parts.join(' ');
@@ -44,7 +45,9 @@ const API = (() => {
     const langs = (d.language || []).filter((l) => LANG_LABELS[l]);
     const edLangs = (ed?.language || []).filter((l) => LANG_LABELS[l]);
     const readableIa = ed && ed.ebook_access === 'public' && ed.ia?.[0];
+    const borrowIa = ed && ed.ebook_access === 'borrowable' && ed.ia?.[0];
     return {
+      source: 'ol',
       key: d.key,
       title: d.title,
       subtitle: d.subtitle || '',
@@ -55,6 +58,7 @@ const API = (() => {
       allLangs: langs,
       editionCount: d.edition_count || 0,
       ia: readableIa || null,
+      borrowIa: borrowIa || null,
       editionKey: ed?.key || null,
       editionTitle: ed?.title || d.title,
       access: ed?.ebook_access || d.ebook_access || 'no_ebook',
@@ -157,11 +161,88 @@ const API = (() => {
     return new TextDecoder('utf-8').decode(await blob.arrayBuffer());
   }
 
+  /* ---------- Google Books ---------- */
+  const GB = 'https://www.googleapis.com/books/v1/volumes';
+  const GB_PAGE = 20;
+  const GB_LANGS = { es: 'spa', en: 'eng' };
+  const gbKey = () => (window.FOLIO_CONFIG && window.FOLIO_CONFIG.googleBooksKey) || '';
+
+  function gbQuery(f) {
+    const parts = [];
+    if (f.q && clean(f.q)) parts.push(clean(f.q));
+    if (f.author && clean(f.author)) parts.push(`inauthor:"${clean(f.author).replace(/"/g, '')}"`);
+    if (f.subject) parts.push(`subject:"${f.subject}"`);
+    return parts.join(' ');
+  }
+
+  function normalizeVolume(v) {
+    const i = v.volumeInfo || {}, a = v.accessInfo || {};
+    const lang = GB_LANGS[i.language];
+    const img = i.imageLinks?.thumbnail || i.imageLinks?.smallThumbnail || '';
+    const full = a.viewability === 'ALL_PAGES';
+    return {
+      source: 'google',
+      key: `gb:${v.id}`,
+      gbId: v.id,
+      title: i.title + (i.subtitle && i.title.length < 40 ? `: ${i.subtitle}` : ''),
+      author: (i.authors || []).slice(0, 3).join(', ') || 'Autor desconocido',
+      year: parseInt((i.publishedDate || '').slice(0, 4), 10) || null,
+      coverSrc: img ? img.replace(/^http:/, 'https:').replace('&edge=curl', '') : '',
+      langs: lang ? [lang] : [],
+      allLangs: lang ? [lang] : [],
+      description: (i.description || '').replace(/<[^>]+>/g, ''),
+      subjects: i.categories || [],
+      pageCount: i.pageCount || 0,
+      publisher: i.publisher || '',
+      // Solo se puede leer dentro de la app si Google permite incrustar el visor.
+      viewable: a.embeddable && a.viewability !== 'NO_PAGES',
+      full,
+      infoLink: i.infoLink || `https://books.google.com/books?id=${v.id}`,
+    };
+  }
+
+  async function searchGoogle(f, page = 1, signal) {
+    const q = gbQuery(f) || (f.subject ? '' : 'subject:fiction');
+    const params = new URLSearchParams({ q: q || `subject:"${f.subject}"`, maxResults: GB_PAGE, startIndex: (page - 1) * GB_PAGE, printType: 'books' });
+    if (f.lang === 'es' || f.lang === 'en') params.set('langRestrict', f.lang);
+    if (f.avail === 'full') params.set('filter', 'free-ebooks');
+    else if (f.avail === 'preview') params.set('filter', 'partial');
+    if (f.sort === 'new') params.set('orderBy', 'newest');
+    if (gbKey()) params.set('key', gbKey());
+    const res = await fetch(`${GB}?${params}`, { signal });
+    if (res.status === 429 || res.status === 403) throw Object.assign(new Error('quota'), { code: 'quota' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const from = parseInt(f.yearFrom, 10), to = parseInt(f.yearTo, 10);
+    const docs = (data.items || []).map(normalizeVolume).filter((d) =>
+      d.langs.length // solo español o inglés
+      && (!from || (d.year && d.year >= from))
+      && (!to || (d.year && d.year <= to)));
+    const total = data.totalItems || 0;
+    return { total, docs, hasMore: (data.items || []).length === GB_PAGE && page * GB_PAGE < Math.min(total, 400) };
+  }
+
+  // Busca una vista previa en Google Books para un libro de Open Library.
+  async function findGooglePreview(title, author) {
+    const q = `intitle:"${clean(title).replace(/"/g, '')}"${author ? ` inauthor:"${clean(author.split(',')[0]).replace(/"/g, '')}"` : ''}`;
+    const params = new URLSearchParams({ q, filter: 'partial', maxResults: 5, printType: 'books' });
+    if (gbKey()) params.set('key', gbKey());
+    const res = await fetch(`${GB}?${params}`);
+    if (res.status === 429 || res.status === 403) throw Object.assign(new Error('quota'), { code: 'quota' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const vols = (data.items || []).map(normalizeVolume).filter((d) => d.viewable);
+    return vols.find((d) => d.langs.length) || vols[0] || null;
+  }
+
+  const googleEmbedUrl = (id) => `https://books.google.com/books?id=${encodeURIComponent(id)}&pg=PP1&output=embed&hl=es`;
+  const olBorrowUrl = (b) => `${OL}${b.editionKey || b.key}`;
+
   const coverUrl = (id, size = 'M') => (id ? `https://covers.openlibrary.org/b/id/${id}-${size}.jpg` : null);
   const iaThumb = (ia) => (ia ? `${IA}/services/img/${encodeURIComponent(ia)}` : null);
   const pageImage = (ia, n, w) => `${IA}/download/${encodeURIComponent(ia)}/page/n${n}_w${w}.jpg`;
   const olUrl = (key) => `${OL}${key}`;
   const iaUrl = (ia) => `${IA}/details/${encodeURIComponent(ia)}`;
 
-  return { search, getWork, getScannedEditions, getItem, getText, coverUrl, iaThumb, pageImage, olUrl, iaUrl, LANG_LABELS, PAGE_SIZE };
+  return { search, searchGoogle, findGooglePreview, googleEmbedUrl, olBorrowUrl, getWork, getScannedEditions, getItem, getText, coverUrl, iaThumb, pageImage, olUrl, iaUrl, LANG_LABELS, PAGE_SIZE };
 })();

@@ -433,3 +433,30 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ============ Fuentes múltiples ============ */
+.radio-list { display: flex; flex-direction: column; gap: 6px; }
+.radio-list label { position: relative; cursor: pointer; }
+.radio-list input { position: absolute; opacity: 0; }
+.radio-list span { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px 8px 32px; border: 1px solid var(--line); border-radius: 10px; transition: border-color .15s, background .15s; position: relative; }
+.radio-list span::before { content: ""; position: absolute; left: 10px; top: 11px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); box-sizing: border-box; transition: all .15s; }
+.radio-list b { font-size: 13.5px; font-weight: 600; }
+.radio-list small { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.radio-list input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
+.radio-list input:checked + span::before { border-color: var(--accent); border-width: 4px; }
+.radio-list input:focus-visible + span { outline: 2px solid var(--accent); }
+#f-source span { font-size: 12.5px; padding: 7px 4px; }
+
+.badge.borrow { background: #2f6b4f; }
+.badge.preview { background: #3559a8; }
+.card .source { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: -4px 0 0; }
+.notice { grid-column: 1 / -1; font-size: 13.5px; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; padding: 10px 14px; }
+.notice a { font-weight: 600; }
+
+.reader.embed-mode #r-mode, .reader.embed-mode #r-search-btn, .reader.embed-mode #r-bookmark,
+.reader.embed-mode #r-bookmarks-btn, .reader.embed-mode #r-settings-btn, .reader.embed-mode .reader-bottom,
+.reader.embed-mode .navzone, .reader.embed-mode .book { display: none; }
+.embed { position: absolute; inset: 12px; display: flex; flex-direction: column; gap: 8px; }
+.embed iframe { flex: 1; width: 100%; max-width: 980px; margin: 0 auto; border: 0; border-radius: 10px; background: #fff; box-shadow: 0 20px 45px rgba(0,0,0,.25); }
+.embed p { margin: 0; text-align: center; font-size: 12.5px; color: var(--paper-muted); }
+.embed p a { color: var(--accent); }
